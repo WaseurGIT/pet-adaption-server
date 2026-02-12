@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const app = express();
 const port = process.env.PORT || 5000;
+require("dotenv").config();
 
 app.use(cors());
 app.use(express.json());
@@ -103,7 +104,109 @@ async function run() {
       }
     });
 
-    
+    // pets related api
+    // 1. add a new pet to the database
+    app.post("/pets", async (req, res) => {
+      try {
+        const pet = req.body;
+
+        if (!pet.name || !pet.type || !pet.age) {
+          return res.status(400).json({
+            success: false,
+            message: "Name, type and age are required for a pet",
+          });
+        }
+
+        const result = await petsCollection.insertOne(pet);
+        res.status(201).json({
+          success: true,
+          message: "Pet added successfully",
+          insertedId: result.insertedId,
+        });
+      } catch (error) {
+        console.error("Error", error);
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // 2. get all pets from the database, with optional filtering by category
+    app.get("/pets", async (req, res) => {
+      try {
+        const { category } = req.query;
+        let query = {};
+
+        if (category) {
+          query.category = category;
+        }
+
+        const result = await petsCollection.find(query).toArray();
+        res.json({
+          success: true,
+          count: result.length,
+          data: result,
+        });
+      } catch (error) {
+        console.error("Error getting pets:", error);
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // 3. get a single pet by id
+    app.get("/pets/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+
+        if (!ObjectId.isValid(id)) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid pet ID",
+          });
+        }
+
+        const query = { _id: new ObjectId(id) };
+        const result = await petsCollection.findOne(query);
+        if (!result) {
+          return res.status(404).json({
+            success: false,
+            message: "Pet not found",
+          });
+        }
+        res.json({
+          success: true,
+          data: result,
+        });
+      } catch (error) {
+        console.error("Error getting pet:", error);
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+    // 4.delete a pet from the database
+    app.delete("/pets/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+        if (!ObjectId.isValid(id)) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid pet ID",
+          });
+        }
+        const query = { _id: new ObjectId(id) };
+        const result = await petsCollection.deleteOne(query);
+        if (result.deletedCount === 0) {
+          return res.status(404).json({
+            success: false,
+            message: "Pet not found",
+          });
+        }
+        res.json({
+          success: true,
+          message: "Pet deleted successfully",
+        });
+      } catch (error) {
+        console.error("Error deleting pet:", error);
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
@@ -118,9 +221,9 @@ async function run() {
 run().catch(console.dir);
 
 app.get("/", (req, res) => {
-  res.send(`Pet Adaption Server is running on port ${port}`);
+  res.send(`Pet Adoption Server is running on port ${port}`);
 });
 
 app.listen(port, () => {
-  console.log(`Pet Adaption Server is running on port ${port}`);
+  console.log(`Pet Adoption Server is running on port ${port}`);
 });
