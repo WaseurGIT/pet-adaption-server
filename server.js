@@ -26,6 +26,7 @@ async function run() {
 
     const usersCollection = client.db("petAdoption").collection("users");
     const petsCollection = client.db("petAdoption").collection("pets");
+    const reviewsCollection = client.db("petAdoption").collection("reviews");
 
     // user related api
 
@@ -159,27 +160,30 @@ async function run() {
         if (!ObjectId.isValid(id)) {
           return res.status(400).json({
             success: false,
-            message: "Invalid pet ID",
+            message: "Invalid pet ID format",
           });
         }
 
-        const query = { _id: new ObjectId(id) };
-        const result = await petsCollection.findOne(query);
+        const result = await petsCollection.findOne({
+          _id: new ObjectId(id),
+        });
+
         if (!result) {
           return res.status(404).json({
             success: false,
             message: "Pet not found",
           });
         }
+
         res.json({
           success: true,
           data: result,
         });
       } catch (error) {
-        console.error("Error getting pet:", error);
         res.status(500).json({ success: false, error: error.message });
       }
     });
+
     // 4.delete a pet from the database
     app.delete("/pets/:id", async (req, res) => {
       try {
@@ -204,6 +208,43 @@ async function run() {
         });
       } catch (error) {
         console.error("Error deleting pet:", error);
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // reviews related api
+    // 1. add a new review to the database
+    app.post("/reviews", async (req, res) => {
+      try {
+        const review = req.body;
+        if (!review.userEmail || !review.petId || !review.rating) {
+          return res.status(400).json({
+            success: false,
+            message: "User email, pet ID and rating are required for a review",
+          });
+        }
+        const result = await reviewsCollection.insertOne(review);
+        res.status(201).json({
+          success: true,
+          message: "Review added successfully",
+          insertedId: result.insertedId,
+        });
+      } catch (error) {
+        console.error("Error adding review:", error);
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+    // 2. get all reviews
+    app.get("/reviews", async (req, res) => {
+      try {
+        const result = await reviewsCollection.find().toArray();
+        res.json({
+          success: true,
+          count: result.length,
+          data: result,
+        });
+      } catch (error) {
+        console.error("Error getting reviews:", error);
         res.status(500).json({ success: false, error: error.message });
       }
     });
