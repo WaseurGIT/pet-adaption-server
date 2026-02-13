@@ -114,7 +114,7 @@ async function run() {
       try {
         const pet = req.body;
 
-        if (!pet.name || !pet.type || !pet.age) {
+        if (!pet.pet_name || !pet.category || !pet.age) {
           return res.status(400).json({
             success: false,
             message: "Name, type and age are required for a pet",
