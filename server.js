@@ -1,6 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const app = express();
+const jwt = require("jsonwebtoken");
 const port = process.env.PORT || 5000;
 require("dotenv").config();
 
@@ -34,10 +35,32 @@ async function run() {
       .db("petAdoption")
       .collection("donations");
 
-    // user related api
+    const verifyToken = (req, res, next) => {
+      const authHeader = req.headers.authorization;
+      if (!authHeader) {
+        return res.status(401).json({ message: "Unauthorized access" });
+      }
 
+      const token = authHeader.split(" ")[1];
+      jwt.verify(token, process.env.secretKey, (err, decoded) => {
+        if (err) {
+          return res.status(403).json({ message: "Forbidden access" });
+        }
+        req.decoded = decoded;
+        next();
+      });
+    };
+
+    app.post("/jwt", (req, res) => {
+      const user = req.body;
+
+      const token = jwt.sign(user, process.env.secretKey, { expiresIn: "7d" });
+      res.send({ token });
+    });
+
+    // user related api
     // 1. add a new user to the database
-    app.post("/users", async (req, res) => {
+    app.post("/users", verifyToken, async (req, res) => {
       try {
         const user = req.body;
 
@@ -69,7 +92,7 @@ async function run() {
     });
 
     // 2. get all users from the database
-    app.get("/users", async (req, res) => {
+    app.get("/users", verifyToken, async (req, res) => {
       try {
         const result = await usersCollection.find().toArray();
         res.send(result);
@@ -80,7 +103,7 @@ async function run() {
     });
 
     // 3. get single users or a specific user by email
-    app.get("/users/:email", async (req, res) => {
+    app.get("/users/:email", verifyToken, async (req, res) => {
       try {
         const email = req.params.email;
         const user = await usersCollection.findOne({ email: email });
@@ -99,7 +122,7 @@ async function run() {
     });
 
     // 4. delete a user from the database
-    app.delete("/users/:id", async (req, res) => {
+    app.delete("/users/:id", verifyToken, async (req, res) => {
       try {
         const id = req.params.id;
         const query = { _id: new ObjectId(id) };
@@ -113,7 +136,7 @@ async function run() {
 
     // pets related api
     // 1. add a new pet to the database
-    app.post("/pets", async (req, res) => {
+    app.post("/pets", verifyToken, async (req, res) => {
       try {
         const pet = req.body;
 
@@ -191,7 +214,7 @@ async function run() {
     });
 
     // 4.delete a pet from the database
-    app.delete("/pets/:id", async (req, res) => {
+    app.delete("/pets/:id", verifyToken, async (req, res) => {
       try {
         const id = req.params.id;
         if (!ObjectId.isValid(id)) {
@@ -220,7 +243,7 @@ async function run() {
 
     // adoption related api
     // 1. post an adoption request
-    app.post("/adoptions", async (req, res) => {
+    app.post("/adoptions", verifyToken, async (req, res) => {
       try {
         const adoption = req.body;
         if (!adoption.email || !adoption.petId) {
@@ -242,7 +265,7 @@ async function run() {
       }
     });
     // 2. get all adoption requests
-    app.get("/adoptions", async (req, res) => {
+    app.get("/adoptions", verifyToken, async (req, res) => {
       try {
         const result = await adoptionsCollection.find().toArray();
         res.json({
@@ -258,7 +281,7 @@ async function run() {
 
     // reviews related api
     // 1. add a new review to the database
-    app.post("/reviews", async (req, res) => {
+    app.post("/reviews", verifyToken, async (req, res) => {
       try {
         const review = req.body;
         if (!review.email || !review.rating) {
@@ -279,7 +302,7 @@ async function run() {
       }
     });
     // 2. get all reviews
-    app.get("/reviews", async (req, res) => {
+    app.get("/reviews", verifyToken, async (req, res) => {
       try {
         const result = await reviewsCollection.find().toArray();
         res.json({
@@ -295,7 +318,7 @@ async function run() {
 
     // donations related api
     // 1. add a new donation to the database
-    app.post("/donations", async (req, res) => {
+    app.post("/donations", verifyToken, async (req, res) => {
       try {
         const donation = req.body;
         if (!donation.email || !donation.amount) {
@@ -316,7 +339,7 @@ async function run() {
       }
     });
     // 2. get all donations
-    app.get("/donations", async (req, res) => {
+    app.get("/donations", verifyToken, async (req, res) => {
       try {
         const result = await donationsCollection.find().toArray();
         res.json({
