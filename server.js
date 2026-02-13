@@ -217,10 +217,10 @@ async function run() {
     app.post("/reviews", async (req, res) => {
       try {
         const review = req.body;
-        if (!review.userEmail || !review.petId || !review.rating) {
+        if (!review.email || !review.rating) {
           return res.status(400).json({
             success: false,
-            message: "User email, pet ID and rating are required for a review",
+            message: "User email and rating are required for a review",
           });
         }
         const result = await reviewsCollection.insertOne(review);
