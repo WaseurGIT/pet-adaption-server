@@ -30,6 +30,9 @@ async function run() {
     const adoptionsCollection = client
       .db("petAdoption")
       .collection("adoptions");
+    const donationsCollection = client
+      .db("petAdoption")
+      .collection("donations");
 
     // user related api
 
@@ -286,6 +289,43 @@ async function run() {
         });
       } catch (error) {
         console.error("Error getting reviews:", error);
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // donations related api
+    // 1. add a new donation to the database
+    app.post("/donations", async (req, res) => {
+      try {
+        const donation = req.body;
+        if (!donation.email || !donation.amount) {
+          return res.status(400).json({
+            success: false,
+            message: "User email and donation amount are required",
+          });
+        }
+        const result = await donationsCollection.insertOne(donation);
+        res.status(201).json({
+          success: true,
+          message: "Donation added successfully",
+          insertedId: result.insertedId,
+        });
+      } catch (error) {
+        console.error("Error adding donation:", error);
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+    // 2. get all donations
+    app.get("/donations", async (req, res) => {
+      try {
+        const result = await donationsCollection.find().toArray();
+        res.json({
+          success: true,
+          count: result.length,
+          data: result,
+        });
+      } catch (error) {
+        console.error("Error getting donations:", error);
         res.status(500).json({ success: false, error: error.message });
       }
     });
