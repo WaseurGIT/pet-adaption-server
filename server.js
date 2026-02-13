@@ -8,6 +8,22 @@ require("dotenv").config();
 app.use(cors());
 app.use(express.json());
 
+const verifyToken = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).json({ message: "Unauthorized access" });
+  }
+
+  const token = authHeader.split(" ")[1];
+  jwt.verify(token, process.env.secretKey, (err, decoded) => {
+    if (err) {
+      return res.status(403).json({ message: "Forbidden access" });
+    }
+    req.decoded = decoded;
+    next();
+  });
+};
+
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@cluster0.febqytm.mongodb.net/?appName=Cluster0`;
 
@@ -35,20 +51,20 @@ async function run() {
       .db("petAdoption")
       .collection("donations");
 
-    const verifyToken = (req, res, next) => {
-      const authHeader = req.headers.authorization;
-      if (!authHeader) {
-        return res.status(401).json({ message: "Unauthorized access" });
-      }
+    const verifyAdmin = async (req, res, next) => {
+      try {
+        const email = req.decoded.email;
 
-      const token = authHeader.split(" ")[1];
-      jwt.verify(token, process.env.secretKey, (err, decoded) => {
-        if (err) {
-          return res.status(403).json({ message: "Forbidden access" });
+        const user = await usersCollection.findOne({ email });
+
+        if (!user || user.role !== "admin") {
+          return res.status(403).json({ message: "Admin access only" });
         }
-        req.decoded = decoded;
+
         next();
-      });
+      } catch (error) {
+        res.status(500).json({ message: error.message });
+      }
     };
 
     app.post("/jwt", (req, res) => {
@@ -62,7 +78,7 @@ async function run() {
     // 1. add a new user to the database
     app.post("/users", verifyToken, async (req, res) => {
       try {
-        const user = req.body;
+        const user = { ...req.body, role: "user" };
 
         if (!user.name || !user.email) {
           return res
@@ -92,7 +108,7 @@ async function run() {
     });
 
     // 2. get all users from the database
-    app.get("/users", verifyToken, async (req, res) => {
+    app.get("/users", verifyToken, verifyAdmin, async (req, res) => {
       try {
         const result = await usersCollection.find().toArray();
         res.send(result);
@@ -103,7 +119,7 @@ async function run() {
     });
 
     // 3. get single users or a specific user by email
-    app.get("/users/:email", verifyToken, async (req, res) => {
+    app.get("/users/:email", verifyToken, verifyAdmin, async (req, res) => {
       try {
         const email = req.params.email;
         const user = await usersCollection.findOne({ email: email });
@@ -122,7 +138,7 @@ async function run() {
     });
 
     // 4. delete a user from the database
-    app.delete("/users/:id", verifyToken, async (req, res) => {
+    app.delete("/users/:id", verifyToken, verifyAdmin, async (req, res) => {
       try {
         const id = req.params.id;
         const query = { _id: new ObjectId(id) };
@@ -136,7 +152,7 @@ async function run() {
 
     // pets related api
     // 1. add a new pet to the database
-    app.post("/pets", verifyToken, async (req, res) => {
+    app.post("/pets", verifyToken, verifyAdmin, async (req, res) => {
       try {
         const pet = req.body;
 
@@ -214,7 +230,7 @@ async function run() {
     });
 
     // 4.delete a pet from the database
-    app.delete("/pets/:id", verifyToken, async (req, res) => {
+    app.delete("/pets/:id", verifyToken, verifyAdmin, async (req, res) => {
       try {
         const id = req.params.id;
         if (!ObjectId.isValid(id)) {
@@ -243,7 +259,7 @@ async function run() {
 
     // adoption related api
     // 1. post an adoption request
-    app.post("/adoptions", verifyToken, async (req, res) => {
+    app.post("/adoptions", verifyToken, verifyAdmin, async (req, res) => {
       try {
         const adoption = req.body;
         if (!adoption.email || !adoption.petId) {
@@ -265,7 +281,7 @@ async function run() {
       }
     });
     // 2. get all adoption requests
-    app.get("/adoptions", verifyToken, async (req, res) => {
+    app.get("/adoptions", verifyToken, verifyAdmin, async (req, res) => {
       try {
         const result = await adoptionsCollection.find().toArray();
         res.json({
