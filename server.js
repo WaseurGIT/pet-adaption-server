@@ -27,6 +27,9 @@ async function run() {
     const usersCollection = client.db("petAdoption").collection("users");
     const petsCollection = client.db("petAdoption").collection("pets");
     const reviewsCollection = client.db("petAdoption").collection("reviews");
+    const adoptionsCollection = client
+      .db("petAdoption")
+      .collection("adoptions");
 
     // user related api
 
@@ -208,6 +211,44 @@ async function run() {
         });
       } catch (error) {
         console.error("Error deleting pet:", error);
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // adoption related api
+    // 1. post an adoption request
+    app.post("/adoptions", async (req, res) => {
+      try {
+        const adoption = req.body;
+        if (!adoption.email || !adoption.petId) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "User email and pet ID are required for an adoption request",
+          });
+        }
+        const result = await adoptionsCollection.insertOne(adoption);
+        res.status(201).json({
+          success: true,
+          message: "Adoption request submitted successfully",
+          insertedId: result.insertedId,
+        });
+      } catch (error) {
+        console.error("Error submitting adoption request:", error);
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+    // 2. get all adoption requests
+    app.get("/adoptions", async (req, res) => {
+      try {
+        const result = await adoptionsCollection.find().toArray();
+        res.json({
+          success: true,
+          count: result.length,
+          data: result,
+        });
+      } catch (error) {
+        console.error("Error getting adoption requests:", error);
         res.status(500).json({ success: false, error: error.message });
       }
     });
