@@ -54,56 +54,58 @@ async function run() {
     const verifyAdmin = async (req, res, next) => {
       try {
         const email = req.decoded.email;
-
         const user = await usersCollection.findOne({ email });
-
         if (!user || user.role !== "admin") {
-          return res.status(403).json({ message: "Admin access only" });
+          return res.status(403).json({ message: "Admin access required" });
         }
-
         next();
       } catch (error) {
-        res.status(500).json({ message: error.message });
+        console.error("Admin verification error:", error);
+        return res.status(500).json({ message: "Internal server error" });
       }
     };
 
-    app.post("/jwt", (req, res) => {
-      const user = req.body;
+    app.post("/jwt", async (req, res) => {
+      try {
+        const { email } = req.body;
+        if (!email) {
+          return res.status(400).json({ message: "Email is required" });
+        }
 
-      const token = jwt.sign(user, process.env.secretKey, { expiresIn: "7d" });
-      res.send({ token });
+        const token = jwt.sign({ email }, process.env.secretKey, {
+          expiresIn: "7d",
+        });
+
+        res.status(200).json({ token });
+      } catch (error) {
+        console.error("Error generating JWT:", error);
+        res.status(500).json({ message: "Internal server error" });
+      }
     });
 
     // user related api
     // 1. add a new user to the database
-    app.post("/users", verifyToken, async (req, res) => {
+    app.post("/users", async (req, res) => {
       try {
-        const user = { ...req.body, role: "user" };
-
+        const user = req.body;
         if (!user.name || !user.email) {
-          return res
-            .status(400)
-            .json({ success: false, error: "Name and email are required" });
+          return res.status(400).send({ error: "Name and email are required" });
         }
-
         const existingUser = await usersCollection.findOne({
           email: user.email,
         });
         if (!existingUser) {
           const result = await usersCollection.insertOne(user);
-          return res
-            .status(200)
-            .json({ success: true, message: "User added", result });
+          res.send(result);
         } else {
-          return res.status(200).json({
-            success: true,
-            message: "User already exists",
-            existingUser,
-          });
+          res.send({ message: "User already exists" });
         }
+        // console.log(user);
       } catch (error) {
-        console.error("Error", error);
-        res.status(500).json({ success: false, error: error.message });
+        console.error("Error adding user:", error);
+        res
+          .status(500)
+          .send({ error: "An error occurred while adding the user" });
       }
     });
 
@@ -118,22 +120,27 @@ async function run() {
       }
     });
 
-    // 3. get single users or a specific user by email
-    app.get("/users/:email", verifyToken, verifyAdmin, async (req, res) => {
+    //
+    app.get("/usersRole/:email", verifyToken, async (req, res) => {
       try {
         const email = req.params.email;
-        const user = await usersCollection.findOne({ email: email });
-
-        if (!user) {
-          return res
-            .status(404)
-            .json({ success: false, message: "User not found" });
-        } else {
-          res.status(200).json({ success: true, data: user });
-        }
+        const query = { email: email };
+        const user = await usersCollection.findOne(query);
+        res.send({ role: user?.role || "user" });
       } catch (error) {
-        console.error("Error getting single user:", error);
-        res.status(500).json({ success: false, error: error.message });
+        console.error("Error fetching user:", error);
+        res.send({ error: "An error occurred while fetching the user" });
+      }
+    });
+
+    // 3. get a single user by email
+    app.get("/users/email/:email", verifyToken, async (req, res) => {
+      try {
+        const email = req.params.email;
+        const user = await usersCollection.findOne({ email });
+        res.send(user);
+      } catch (error) {
+        res.status(500).send({ message: "Error fetching user" });
       }
     });
 
@@ -257,22 +264,60 @@ async function run() {
       }
     });
 
+    // PATCH /pets/:id
+    // PATCH /pets/:id
+    app.patch("/pets/:id", async (req, res) => {
+      const { id } = req.params;
+      const { available } = req.body;
+
+      if (!ObjectId.isValid(id)) {
+        return res
+          .status(400)
+          .json({ success: false, message: "Invalid pet ID" });
+      }
+
+      try {
+        const filter = { _id: new ObjectId(id) };
+        const updateDoc = { $set: { available: available } };
+
+        const result = await petsCollection.updateOne(filter, updateDoc);
+
+        if (result.matchedCount === 0) {
+          return res
+            .status(404)
+            .json({ success: false, message: "Pet not found" });
+        }
+
+        const updatedPet = await petsCollection.findOne(filter);
+
+        res.status(200).json({ success: true, data: updatedPet });
+      } catch (err) {
+        console.error("Error updating pet:", err);
+        res.status(500).json({ success: false, message: err.message });
+      }
+    });
+
     // adoption related api
     // 1. post an adoption request
-    app.post("/adoptions", verifyToken, verifyAdmin, async (req, res) => {
+    app.post("/adoptions", verifyToken, async (req, res) => {
       try {
         const adoption = req.body;
+
         if (!adoption.email || !adoption.petId) {
           return res.status(400).json({
             success: false,
-            message:
-              "User email and pet ID are required for an adoption request",
+            message: "User email and pet ID are required",
           });
         }
+
+        adoption.status = "pending";
+        adoption.createdAt = new Date();
+
         const result = await adoptionsCollection.insertOne(adoption);
+
         res.status(201).json({
           success: true,
-          message: "Adoption request submitted successfully",
+          message: "Adoption request submitted. Waiting for admin approval.",
           insertedId: result.insertedId,
         });
       } catch (error) {
@@ -291,6 +336,25 @@ async function run() {
         });
       } catch (error) {
         console.error("Error getting adoption requests:", error);
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // 3. get adoption requests by user email
+    app.get("/adoptions/:email", verifyToken, async (req, res) => {
+      try {
+        const email = req.params.email;
+        if (req.decoded.email !== email) {
+          return res.status(403).json({ message: "Forbidden access" });
+        }
+        const result = await adoptionsCollection.find({ email }).toArray();
+        res.json({
+          success: true,
+          count: result.length,
+          data: result,
+        });
+      } catch (error) {
+        console.error("Error getting user adoption requests:", error);
         res.status(500).json({ success: false, error: error.message });
       }
     });
@@ -366,6 +430,26 @@ async function run() {
       } catch (error) {
         console.error("Error getting donations:", error);
         res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // 3. get donations by user email
+    app.get("/donations/:email", verifyToken, async (req, res) => {
+      try {
+        const email = req.params.email;
+
+        // check if the token email matches the requested email
+        if (req.decoded.email !== email) {
+          return res.status(403).send({ error: "Forbidden access" });
+        }
+
+        const donations = await donationsCollection.find({ email }).toArray();
+        res.send(donations);
+      } catch (error) {
+        console.error("Error fetching donations:", error);
+        res
+          .status(500)
+          .send({ error: "An error occurred while fetching donations" });
       }
     });
 
