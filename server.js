@@ -7,29 +7,24 @@ require("dotenv").config();
 
 app.use(
   cors({
-    origin: [
-      "http://localhost:5173", 
-      "https://pet-adoption-lime.vercel.app",
-    ],
+    origin: ["http://localhost:5173", "https://pet-adoption-lime.vercel.app"],
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
     credentials: true,
   }),
 );
-
-app.use(express.json());
 app.use(express.json());
 
 const verifyToken = (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (!authHeader) {
-    return res.status(401).json({ message: "Unauthorized access" });
+    return res.status(401).json({ message: "Unauthorized" });
   }
-
   const token = authHeader.split(" ")[1];
-  jwt.verify(token, process.env.secretKey, (err, decoded) => {
+  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
     if (err) {
-      return res.status(403).json({ message: "Forbidden access" });
+      return res.status(403).json({ message: "Forbidden" });
     }
+    req.user = decoded;
     req.decoded = decoded;
     next();
   });
@@ -64,7 +59,10 @@ async function run() {
 
     const verifyAdmin = async (req, res, next) => {
       try {
-        const email = req.decoded.email;
+        const email = req.decoded?.email || req.user?.email;
+        if(!email){
+          return res.status(401).json({ message: "Unauthorized" });
+        }
         const user = await usersCollection.findOne({ email });
         if (!user || user.role !== "admin") {
           return res.status(403).json({ message: "Admin access required" });
@@ -82,11 +80,17 @@ async function run() {
         if (!email) {
           return res.status(400).json({ message: "Email is required" });
         }
-
-        const token = jwt.sign({ email }, process.env.secretKey, {
-          expiresIn: "7d",
-        });
-
+        const user = await usersCollection.findOne({ email });
+        if (!user) {
+          return res.status(404).json({ message: "User not found" });
+        }
+        const token = jwt.sign(
+          { email: user.email, role: user.role },
+          process.env.JWT_SECRET,
+          {
+            expiresIn: "7d",
+          },
+        );
         res.status(200).json({ token });
       } catch (error) {
         console.error("Error generating JWT:", error);
@@ -144,7 +148,6 @@ async function run() {
       }
     });
 
-    // 3. get a single user by email
     app.get("/users/email/:email", verifyToken, async (req, res) => {
       try {
         const email = req.params.email;
@@ -276,7 +279,6 @@ async function run() {
     });
 
     // PATCH /pets/:id
-    // PATCH /pets/:id
     app.patch("/pets/:id", async (req, res) => {
       const { id } = req.params;
       const { available } = req.body;
@@ -393,7 +395,7 @@ async function run() {
       }
     });
     // 2. get all reviews
-    app.get("/reviews", verifyToken, async (req, res) => {
+    app.get("/reviews", async (req, res) => {
       try {
         const result = await reviewsCollection.find().toArray();
         res.json({
@@ -430,7 +432,7 @@ async function run() {
       }
     });
     // 2. get all donations
-    app.get("/donations", verifyToken, async (req, res) => {
+    app.get("/donations", verifyToken, verifyAdmin, async (req, res) => {
       try {
         const result = await donationsCollection.find().toArray();
         res.json({
@@ -449,7 +451,6 @@ async function run() {
       try {
         const email = req.params.email;
 
-        // check if the token email matches the requested email
         if (req.decoded.email !== email) {
           return res.status(403).send({ error: "Forbidden access" });
         }
