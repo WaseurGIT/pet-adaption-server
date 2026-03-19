@@ -14,16 +14,41 @@ app.use(
 );
 app.use(express.json());
 
+// const verifyToken = (req, res, next) => {
+//   const authHeader = req.headers.authorization;
+//   if (!authHeader) {
+//     return res.status(401).json({ message: "Unauthorized" });
+//   }
+//   const token = authHeader.split(" ")[1];
+//   jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+//     if (err) {
+//       return res.status(403).json({ message: "Forbidden" });
+//     }
+//     req.user = decoded;
+//     req.decoded = decoded;
+//     next();
+//   });
+// };
+
 const verifyToken = (req, res, next) => {
   const authHeader = req.headers.authorization;
-  if (!authHeader) {
+
+  if (!authHeader || typeof authHeader !== "string") {
     return res.status(401).json({ message: "Unauthorized" });
   }
-  const token = authHeader.split(" ")[1];
+
+  const parts = authHeader.split(" ");
+  if (parts.length !== 2) {
+    return res.status(401).json({ message: "Invalid token format" });
+  }
+
+  const token = parts[1];
+
   jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
     if (err) {
       return res.status(403).json({ message: "Forbidden" });
     }
+
     req.user = decoded;
     req.decoded = decoded;
     next();
@@ -46,10 +71,13 @@ async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
     await client.connect();
+    console.log("✅ MongoDB connected & routes initialized");
+    console.log("🔁 Server starting...");
 
     const usersCollection = client.db("petAdoption").collection("users");
     const petsCollection = client.db("petAdoption").collection("pets");
     const reviewsCollection = client.db("petAdoption").collection("reviews");
+    const petFoodsCollection = client.db("petAdoption").collection("petFoods");
     const adoptionsCollection = client
       .db("petAdoption")
       .collection("adoptions");
@@ -60,7 +88,7 @@ async function run() {
     const verifyAdmin = async (req, res, next) => {
       try {
         const email = req.decoded?.email || req.user?.email;
-        if(!email){
+        if (!email) {
           return res.status(401).json({ message: "Unauthorized" });
         }
         const user = await usersCollection.findOne({ email });
@@ -368,6 +396,69 @@ async function run() {
         });
       } catch (error) {
         console.error("Error getting user adoption requests:", error);
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // petfoods related api
+    app.post("/petfoods", verifyToken, verifyAdmin, async (req, res) => {
+      try {
+        const petFood = req.body;
+        if (!petFood.name || !petFood.brand || !petFood.price) {
+          return res.status(400).json({
+            success: false,
+            message: "Name, brand, and price are required for pet food",
+          });
+        }
+        const result = await petFoodsCollection.insertOne(petFood);
+        res.status(201).json({
+          success: true,
+          message: "Pet food added successfully",
+          insertedId: result.insertedId,
+        });
+      } catch (error) {
+        console.error("Error adding pet food:", error);
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    app.get("/petfoods", async (req, res) => {
+      try {
+        const result = await petFoodsCollection.find().toArray();
+        res.json({
+          success: true,
+          count: result.length,
+          data: result,
+        });
+      } catch (error) {
+        console.error("Error getting pet foods:", error);
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    app.delete("/petfoods/:id", verifyToken, verifyAdmin, async (req, res) => {
+      try {
+        const id = req.params.id;
+        if (!ObjectId.isValid(id)) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid pet food ID",
+          });
+        }
+        const query = { _id: new ObjectId(id) };
+        const result = await petFoodsCollection.deleteOne(query);
+        if (result.deletedCount === 0) {
+          return res.status(404).json({
+            success: false,
+            message: "Pet food not found",
+          });
+        }
+        res.json({
+          success: true,
+          message: "Pet food deleted successfully",
+        });
+      } catch (error) {
+        console.error("Error deleting pet food:", error);
         res.status(500).json({ success: false, error: error.message });
       }
     });
