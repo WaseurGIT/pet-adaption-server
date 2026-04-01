@@ -37,7 +37,7 @@ const verifyToken = (req, res, next) => {
     return res.status(401).json({ message: "Unauthorized" });
   }
 
-  const parts = authHeader.split(" ");
+const parts = authHeader.split(" ");
   if (parts.length !== 2) {
     return res.status(401).json({ message: "Invalid token format" });
   }
