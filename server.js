@@ -37,7 +37,7 @@ const verifyToken = (req, res, next) => {
     return res.status(401).json({ message: "Unauthorized" });
   }
 
-const parts = authHeader.split(" ");
+  const parts = authHeader.split(" ");
   if (parts.length !== 2) {
     return res.status(401).json({ message: "Invalid token format" });
   }
@@ -84,6 +84,7 @@ async function run() {
     const donationsCollection = client
       .db("petAdoption")
       .collection("donations");
+    const vetsCollection = client.db("petAdoption").collection("vets");
 
     const verifyAdmin = async (req, res, next) => {
       try {
@@ -553,6 +554,97 @@ async function run() {
         res
           .status(500)
           .send({ error: "An error occurred while fetching donations" });
+      }
+    });
+
+    // vets api
+    app.post("/vets", verifyToken, verifyAdmin, async (req, res) => {
+      try {
+        const vet = req.body;
+        if (!vet.name || !vet.specialization || !vet.phone) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "Name, specialization, and contact information are required for a vet",
+          });
+        }
+        const result = await vetsCollection.insertOne(vet);
+        res.status(201).json({
+          success: true,
+          message: "Vet added successfully",
+          insertedId: result.insertedId,
+        });
+      } catch (error) {
+        console.error("Error adding vet:", error);
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    app.get("/vets", async (req, res) => {
+      try {
+        const result = await vetsCollection.find().toArray();
+        res.json({
+          success: true,
+          count: result.length,
+          data: result,
+        });
+      } catch (error) {
+        console.error("Error getting vets:", error);
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    app.get("/vets/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+        if (!ObjectId.isValid(id)) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid vet ID format",
+          });
+        }
+        const vet = await vetsCollection.findOne({ _id: new ObjectId(id) });
+        if (!vet) {
+          return res.status(404).json({
+            success: false,
+            message: "Vet not found",
+          });
+        }
+        res.json({
+          success: true,
+          data: vet,
+        });
+      } catch (error) {
+        console.error("Error fetching vet:", error);
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    app.delete("/vets/:id", verifyToken, verifyAdmin, async (req, res) => {
+      try {
+        const id = req.params.id;
+        if (!ObjectId.isValid(id)) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid vet ID format",
+          });
+        }
+        const result = await vetsCollection.deleteOne({
+          _id: new ObjectId(id),
+        });
+        if (result.deletedCount === 0) {
+          return res.status(404).json({
+            success: false,
+            message: "Vet not found",
+          });
+        }
+        res.json({
+          success: true,
+          message: "Vet deleted successfully",
+        });
+      } catch (error) {
+        console.error("Error deleting vet:", error);
+        res.status(500).json({ success: false, error: error.message });
       }
     });
 
